@@ -1,0 +1,390 @@
+---
+title: "Kalboard 360 Online Learning"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+#install.packages("dplyr")
+#install.packages("tidyverse")
+#install.packages("plotROC")
+#library("tidyverse")
+library("ggplot2")
+library("plotROC")
+library("ggfortify")
+library("dplyr")
+```
+
+
+## Data Introduction
+
+
+```{R} 
+#loading the data
+projectData <- read.csv("\\Users\\charl\\Desktop\\SDS HWS\\projectdata.csv")
+
+#selecting variables of interest.
+ProjectData <- projectData %>%
+  select(ParentschoolSatisfaction, AnnouncementsView, Discussion, 
+         raisedhands, Class, StudentAbsenceDays)
+
+```
+
+
+The data is taken from the website "kaggle.com" which provides access to many different data sets, one of which, including this data set of an online learning service called 'Kalboard 360'. This service measures many different metrics as the students learn through a variety of online classes. There are 480 observations in this data set. 
+
+Variables: 
+
+    - ParentschoolSatisfaction
+    - AnnouncementsView 
+    - Discussion
+    - raisedhands
+    - Class
+    - StudentAbsenceDays
+
+
+ParentschoolSatisfaction - The satisfaction of the parent of the learning service measured 
+                           with response 'yes', 'no'.
+
+AnnouncementsView - A measure of how many times the student views class 
+                    announcements measured 0-100
+
+Discussion - The amount of times the student participates in discussion measured 0-100
+
+raisedhands - The number of times a student raises their hand. 0-100
+
+StudentAbsenceDays - The number of days a student is absent. This is measured by 
+                     two groupings 'Under-7', 'Above-7'
+
+Class - A categorical grouping of the students based on their performance in the class. 
+  Low-Level: interval includes values from 0 to 69,
+  Middle-Level: interval includes values from 70 to 89,
+  High-Level: interval includes values from 90-100.
+  
+  
+Conceptual Questions:
+
+  - Does the amount of participation in the virtual classroom effect the amount of times 
+    a student will examine announcements?
+  - Does greater student involvement relate to greater parent satisfaction of the program?
+  
+## Linear Regression
+
+```{R}
+
+#creating a linear model predicting announcement views by discussion, class and raised hands
+my_linearmodel <- lm(AnnouncementsView ~ raisedhands + Discussion + Class, data = ProjectData)
+summary(my_linearmodel)
+
+```
+
+Interpretation of Coefficients: Holding all other variables constant increasing raisedhands by one on average increases the announcement view by 0.39701. The same is respectively true for Discussion, on average increasing announcement views by 0.20032, and
+class being == 'low' on average decreasing announcement views by -12.03283. As well as class == 'med' on average decreasing it by -1.96466. 
+
+In relation to the first conceptual question as to whether participation affects the average announcement views. It appears that both forms of participation have minimal positive effects on the announcement views. The variable Class, however appears to have a much greater impact on announcementviews. More specifically ClassM is not significant which makes sense as those are students that are passing the class. ClassL is only students with failing grades and so it would make sense for this to drastically effect the average announcement views.When looking at the adjusted R^2 of the model we can see that the model explains 47.51 % of the variation in the outcome.
+```{R}
+
+# This is the qqplot. It is checking to see if the distribution of the residuals is normal
+# a normal distribution of residuals is an assumption made to have a highly functioning linear model.
+#jpeg(file="the_qqplot") 
+qqplot <- ggplot(mapping = aes(sample = (my_linearmodel$residuals))) + geom_qq() + geom_qq_line() + ggtitle("Plot_1")
+qqplot
+#dev.off()
+
+```
+
+
+```{R}
+
+# modifying the data set to include the fitted values from the model.
+modData <- ProjectData %>%
+mutate(resid = ((my_linearmodel$residuals))) %>%
+mutate(fitval = predict(my_linearmodel))
+
+# This is the residuals plotted against the fitted values
+#jpeg(file="the_resid_plot")
+plot <- ggplot(modData,aes(x = fitval, y = resid)) + geom_point() + geom_abline(aes(intercept = 0, slope = 0, color = "red")) + ggtitle("Plot_2")
+plot
+#dev.off()
+```
+
+
+```{R}
+# here I am creating a new data branch off of the main data but in this case I include grouping by class
+#I want to make a boxplot of the residuals grouped by class as I highly suspect this to be the confounding variable.
+modData1 <- ProjectData %>%
+mutate(resid = ((my_linearmodel$residuals))) %>%
+mutate(fitval = predict(my_linearmodel)) %>%
+group_by(Class)
+# I want to change the order of the boxplots
+modData1$Class = factor(modData1$Class, levels = c("L","M","H"))
+#this is to produce the boxplot
+#jpeg(file="the_boxplot")
+boxplot <- ggplot(modData1, aes(x = (Class), y = resid)) + geom_boxplot() + ggtitle("Plot_3")
+boxplot
+#dev.off()
+
+# Linearity, normality and homoscedacity.
+```
+
+The data appears on the qq-plot (Plot_1) to pass the assumption of linearity however, upon further investigation in (Plot_2) when the residuals are plotted against the fitted values you can see that the data vaguely resembles a cone opening to the right. Ideally the data is randomly scattered around zero. This however is not the case. Taking a closer look in (Plot_3) of box plots across the categorical variables of 'class' we can see the distribution between 'ClassH','ClassM' and 'ClassL'. The variance of 'ClassL' differes greatly from the other two classes leading to a failure of the assumption of homoscedasticity. This is indicative of a limitation of the model as the model will struggle to provide precise predictions for the students with class performances of 'M' or 'H' as the residual values are much greater.
+
+## Logistic Regression
+We are attempting to answer the second conceptual question with the logistic regression.
+Does greater student involvement predict parent satisfaction with the program. Parent satisfaction is a binary variable
+Student involvement in this case is indicated by raised hands and discussion in the class.
+
+```{R}
+set.seed(74983)
+# changing the parent satisfaction 'good' and 'bad' to 1 and 0
+ProjectDataLOG <- ProjectData %>%
+  mutate(Satisfaction = case_when(ParentschoolSatisfaction == 'Good' ~ 1,
+                                  ParentschoolSatisfaction == 'Bad' ~ 0))
+
+# creating a glm predicting parent satisfaction on raised hands and discussion
+my_glm <- glm(Satisfaction ~ raisedhands + Discussion, data = ProjectDataLOG, family = binomial )
+summary(my_glm)
+
+
+#when the model predicts a probability greater then 50 percent we record a 1. when the probability is less we record a # 0
+values <- ProjectDataLOG %>%
+mutate(probability = predict(my_glm, type = "response")) %>%
+mutate(pred = case_when(probability >= .5 ~ 1, probability < .5 ~ 0))
+
+
+# Sensitivity and Specificity Computation
+# we need to know the number of times the model correctly/incorrectly identifies the outcome.
+falsepositive <- values %>%
+filter(pred == 1, Satisfaction == 0)
+falsepos = count(falsepositive)
+truenegative<- values %>%
+filter(pred == 0, Satisfaction == 0)
+trueneg = count(truenegative)
+truepositive <- values %>%
+filter(pred == 1, Satisfaction == 1)
+truepos = count(truepositive)
+falsenegative <- values %>%
+filter(pred == 0, Satisfaction == 1)
+falseneg = count(falsenegative)
+
+# the formulas for sensitivity and specificity are as follows.
+# sensitivity TP / TP + FN
+# specificity TN / TN + FP
+
+sensitivity = truepos / (truepos + falseneg)
+sensitivity * 100
+
+specificity = trueneg / (trueneg + falsepos)
+specificity * 100
+
+# plot ROC and report AUC
+# the plot ROC and AUC or area under curve are metrics used to measure the performance of the model at classification.
+# the greater the area under curve the better the model is doing at classifying. 
+#jpeg(file = "AUCPLOT1")
+plot <- ggplot(values, aes(d = Satisfaction, m = pred )) + geom_roc(n.cuts = 50) + ggtitle("Plot_4")
+calc_auc(plot)
+plot
+#dev.off()
+```
+
+The sensitivity of the model is 75.68493 % and the specificity is 46.2766 % The AUC is 0.6098076. Just by looking at the ROC curve we can see that this model does not do that great of a job of predicting parentschoolSatisfaction but does to some extent. The variable Discussion does not appear to be a significant predictor, While it appears most of the explaining is done by raisedhands. This would leave me to believe that raisedhands could have some play in effecting ParentschoolSatisfaction.
+
+## Logistic Regression with Training Test Split.
+
+```{R}
+# Creating a training a testing split
+# making the training set 70% of the data
+# making the testing set 30% of the data
+set.seed(74983)
+idx_train <- sample(1:nrow(values), floor(0.7 * nrow(values)))
+data_train <- values[idx_train,]
+data_test <- values[-idx_train,]
+
+# Fitting the data again
+# using the training set for the GLM
+my_glm2 <- glm(Satisfaction ~ raisedhands + Discussion, data = data_train, family = binomial )
+summary(my_glm2)
+
+#when the model predicts a probability greater then 50 percent we record a 1. when the probability is less we record a # 0
+values_fake <- data_test %>%
+mutate(probability = predict(my_glm2, data_test, type = "response")) %>%
+mutate(pred = case_when(probability >= .5 ~ 1, probability < .5 ~ 0))
+
+# Sensitivity and Specificity Computation
+# we need to know the number of times the model correctly/incorrectly identifies the outcome.
+falsepositive <- values_fake %>%
+filter(pred == 1, Satisfaction == 0)
+falsepos2 = count(falsepositive)
+
+truenegative<- values_fake %>%
+filter(pred == 0, Satisfaction == 0)
+trueneg2 = count(truenegative)
+
+truepositive <- values_fake %>%
+filter(pred == 1, Satisfaction == 1)
+truepos2 = count(truepositive)
+
+falsenegative <- values_fake %>%
+filter(pred == 0, Satisfaction == 1)
+falseneg2 = count(falsenegative)
+
+sensitivity = truepos2 / (truepos2 + falseneg2)
+sensitivity * 100
+
+specificity = trueneg2 / (trueneg2 + falsepos2)
+specificity * 100
+
+# plot ROC and report AUC
+#jpeg(file = "AUCPLOT2")
+plot2 <- ggplot(values_fake, aes(d = Satisfaction, m = pred )) + geom_roc(n.cuts = 50) + ggtitle("Plot_5")
+calc_auc(plot2)
+plot2
+#dev.off()
+```
+
+The sensitivity of the model is 77.01149 % and the specificity is 56.14035 % The AUC is 0.6657592. Using the testing/training set increased the AUC but produced very similar results. 
+
+## PCA and Clustering
+
+```{R}
+#install.packages("ggfortify")
+library("ggfortify")
+# This is the basic PCA
+# attempting to simplify high complexity data.
+
+PCA <- ProjectData %>%
+  select(-ParentschoolSatisfaction,-Class,-StudentAbsenceDays) %>%
+  scale() %>%
+  prcomp() 
+PCA
+
+# This will be the rotation matrix
+#jpeg(file = "PCA1")
+autoplot(PCA, loadings = TRUE, loadings.label = TRUE,
+         data = ProjectData) + ggtitle("Plot_6")
+#dev.off()
+```
+
+Holding all other variables constant and increasing discussion will have a near equal effect on both the principle components. This however is not the case for the AnnouncementsView and raisedhands as these only seem to marginally effect the second principle component and greatly so effect the first principle component. 
+
+```{R}
+# This is an elbow plot
+# elbow plots are important for determining what number of principle components is necessary for capturing the majority of the variation in the data.
+
+get_ratio <- function(k_max) {
+  ratios <- numeric(k_max)
+  for(k in 1:k_max) {    
+    km <- ProjectData %>% select(-ParentschoolSatisfaction,-Class,-StudentAbsenceDays) %>% kmeans(centers = k, nstart = 100)    
+    ratios[k] <- 1 - km$betweenss / km$totss
+  }
+  return(ratios)
+}
+#jpeg(file = "elbowplot")
+  elbow_df <- tibble(ratio = get_ratio(15), k = 1:15)
+  ggplot(elbow_df, aes(x = k, y = ratio)) + geom_point() + geom_line() +
+    xlab("Number of Clusters") + ylab("Percent variance not accounted for by clustering") + ggtitle("Plot_7")
+  #dev.off()
+```
+
+The elbow plot appears to start its linear decent somewhere between 5 and 2 clusters. This is indicative of the number of k-means clusters. Based upon the fact that the higher number of clusters makes it too hard to interpret graphically I decided to settle with 3 clusters.
+
+
+```{R}
+  
+# This is the code for k-means.
+
+#selecting the variables of interest before clustering
+clusterprojdata <- ProjectData %>% select(-ParentschoolSatisfaction,-Class,-StudentAbsenceDays)
+
+#creating the clusters
+kmeans <- clusterprojdata %>%
+  kmeans(centers = 3, nstart = 100)
+
+#adding the cluster column
+proj_km <- ProjectData %>% 
+  mutate(cluster = factor(kmeans$cluster))
+
+# adding clusters to the other data set.
+proj_km$clusters <- proj_km$cluster
+
+#jpeg(file = "PCA2")
+PCA_data <- data.frame(PCA$x, ParentSatisfaction = ProjectData$ParentschoolSatisfaction, clusters = proj_km$clusters, Class = ProjectData$Class)
+ploty <- ggplot(aes(x = PC1, y = PC2, color = clusters, shape = ParentSatisfaction), data = PCA_data) + geom_point() + ggtitle("Plot_8")
+ploty
+#dev.off()
+
+```
+
+Through graphical examination it does appear that clusters are somewhat predictive of my binary feature of Parent Satisfaction. Clusters 3 and 1 definitely contain mainly 'Good' or 'Bad' while the center cluster 2 appears to be mainly 'Good' but with more 'Bad' mixed in then cluster 3. I suspect that 'Class' would be predicted much more effectively by the clusters then parent satisfaction.
+
+## Logistic Regression with the Principle Componets.
+
+```{R}
+# taking the PCA clusters to use as a training and testing set for the glm model.
+
+PCA_data <- PCA_data %>%
+  mutate(Satisfaction = case_when(ParentSatisfaction == "Good" ~ 1,
+                                  ParentSatisfaction == "Bad" ~ 0))
+
+#splitting into a testing and training set. 
+# 70% train 30% test
+set.seed(74983)
+idx_train <- sample(1:nrow(PCA_data), floor(0.7 * nrow(PCA_data)))
+data_train2 <- PCA_data[idx_train,]
+data_test2 <- PCA_data[-idx_train,]
+
+#predicting parent satisfaction on the first two principle componenents.
+my_glm_final <- glm(Satisfaction ~ PC1 + PC2 , data = data_train2, family = binomial)
+summary(my_glm_final)
+
+# if the model predicts greater than 50% for parent satisfaction then a 1 is recorded. 
+# otherwise a 0 is recorded.
+var <- data_test2 %>%
+  mutate(probability = predict(my_glm_final,data_test2, type = "response")) %>%
+  mutate(pred = case_when(probability >= .5 ~ 1, probability < .5 ~ 0))
+
+# Sensitivity and Specificity Computation
+
+falsepositive <- var %>%
+filter(pred == 1, Satisfaction == 0)
+falsepos2 = count(falsepositive)
+
+truenegative<- var %>%
+filter(pred == 0, Satisfaction == 0)
+trueneg2 = count(truenegative)
+
+truepositive <- var %>%
+filter(pred == 1, Satisfaction == 1)
+truepos2 = count(truepositive)
+
+falsenegative <- var %>%
+filter(pred == 0, Satisfaction == 1)
+falseneg2 = count(falsenegative)
+
+sensitivity = truepos2 / (truepos2 + falseneg2)
+sensitivity * 100
+
+specificity = trueneg2 / (trueneg2 + falsepos2)
+specificity * 100
+
+# plot ROC and report AUC
+#jpeg(file = "AUC3")
+plot3 <- ggplot(var, aes(d = Satisfaction, m = pred )) + geom_roc(n.cuts = 50) + ggtitle("Plot_9")
+calc_auc(plot3)
+plot3
+#dev.off()
+
+```
+
+
+The sensitivity of the model is 78.16092 % while the specificity is 54.38596 % The AUC is 0.6627344. Using the principle components did slightly increase the AUC and both predictors were significant in the model as opposed to one. The reason this performed better is that the dimensionality reduction simplified the data set removing extraneous variables allowing it to perform better. This could happen because the first two principle components together explained a large enough portion of data that when the rest of the principle components were dropped the model still performed better.
+
+```{R, echo=F}
+## DO NOT DELETE THIS BLOCK!
+sessionInfo()
+Sys.time()
+Sys.info()
+```
