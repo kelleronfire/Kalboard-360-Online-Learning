@@ -11,11 +11,22 @@ knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
 #install.packages("dplyr")
 #install.packages("tidyverse")
 #install.packages("plotROC")
-#library("tidyverse")
+#install.packages("ggplot2")
+#install.packages("ggfortify")
+#install.packages("randomForest")
+#install.packages("caret")
+#install.packages("rpart")
+#install.packages("rpart.plot")
+
+library("rpart.plot")
+library("tidyverse")
 library("ggplot2")
 library("plotROC")
 library("ggfortify")
 library("dplyr")
+library("rpart")
+library("randomForest")
+library("caret")
 ```
 
 
@@ -119,6 +130,7 @@ modData1 <- ProjectData %>%
 mutate(resid = ((my_linearmodel$residuals))) %>%
 mutate(fitval = predict(my_linearmodel)) %>%
 group_by(Class)
+head(modData1)
 # I want to change the order of the boxplots
 modData1$Class = factor(modData1$Class, levels = c("L","M","H"))
 #this is to produce the boxplot
@@ -381,6 +393,193 @@ plot3
 
 
 The sensitivity of the model is 78.16092 % while the specificity is 54.38596 % The AUC is 0.6627344. Using the principle components did slightly increase the AUC and both predictors were significant in the model as opposed to one. The reason this performed better is that the dimensionality reduction simplified the data set removing extraneous variables allowing it to perform better. This could happen because the first two principle components together explained a large enough portion of data that when the rest of the principle components were dropped the model still performed better.
+
+
+
+```{R}
+#selecting variables of interest.
+ProjectData2 <- projectData %>%
+  select(AnnouncementsView, Discussion, 
+         raisedhands, Class)
+
+#selecting variables of interest.
+rpart2 <- projectData %>%
+  select(ParentschoolSatisfaction, raisedhands,Discussion)
+
+```
+
+rpart allows us to easily identify variables of interest.
+```{R}
+fitted_cart <- rpart(AnnouncementsView ~ ., data = ProjectData2)
+rpart.plot(fitted_cart)
+
+#an alternate way to viz rpart
+#prp(fitted_cart)
+```
+The average number of announcement views for the group, represented by each box, is the number at the top of each box. The percentage of the sample being representetd by each box is below this number. Starting at the top box with an average announcement views of 38 and 100 % of the population. It then makes it's first branch splitting the sample on whether or not each person raised their hands more or less than 61 times. The data splits and the two new boxes now show that students that did raise hands more than 61 times have a average announcement views that is double of the students who didnt. This trend of greater participation indicating greater announcement views in the class continues down the tree and towards the right. with each split having greater averages of announcementviews produced in the rightward group. This creates a gradient across the bottom level of the CART diagram showing clear increase in announcement views as participation increases. 
+                    
+
+
+# Part 3: Comparing CART, Random Forests, and linear model for predicting announcement views.
+
+```{R}
+set.seed(927384)
+
+#creating an empty matrix to store the MSE values in.
+mean_squared_error <- matrix(NA, nrow = 20, ncol = 3)
+
+#create the folds
+my_folds <- caret::createFolds(ProjectData2$AnnouncementsView, k = 20)
+afold <- ProjectData2$AnnouncementsView[my_folds[[1]]]
+
+mylist_woods <- c()
+mylist_cart <- c()
+mylist_model <- c()
+x = 0
+while (x < 20) {
+  x = x + 1
+  testfold <- ProjectData2[my_folds[[x]],]
+  trainfold <- ProjectData2[-my_folds[[x]],]
+  
+  # fit the random forest for each iteration and calculate MSE
+  randomwoods  <- randomForest(AnnouncementsView ~ ., data = trainfold)
+  rf_predictions  <- predict(randomwoods, testfold)
+  MSE = mean(abs(rf_predictions - testfold$AnnouncementsView)^2)
+  addon <- MSE
+  mylist_woods <- c(mylist_woods, addon)
+  
+  # fit the CART and calculate MSE for each iteration.
+  cart <- rpart(AnnouncementsView ~ ., data = trainfold)
+  cart_predict <- predict(cart, testfold)
+  MSE_Cart = mean(abs(cart_predict - testfold$AnnouncementsView)^2)
+  addon2 <- MSE_Cart
+  mylist_cart <- c(mylist_cart, addon2)
+  
+  # fit the linear Model and calculate MSE for each iteration.
+  my_linearmodel <- lm(AnnouncementsView ~ raisedhands + Discussion + Class, data = trainfold)
+  model_predict <- predict(my_linearmodel,testfold)
+  MSE_model = mean(abs(model_predict - testfold$AnnouncementsView)^2)
+  addon3 <- MSE_model
+  mylist_model <- c(mylist_model, addon3)}
+
+```
+
+
+```{r}
+# Code for part b
+mean_squared_error <- matrix(NA, nrow = 20, ncol = 0)
+mean_squared_error <- cbind(mean_squared_error,mylist_model)
+mean_squared_error <- cbind(mean_squared_error,mylist_cart)
+mean_squared_error <- cbind(mean_squared_error,mylist_woods)
+
+Mean_MSE_model <- mean(mylist_model)
+Mean_MSE_cart <- mean(mylist_cart)
+Mean_MSE_woods <- mean(mylist_woods)
+
+# Your Code Here:
+print(mean_squared_error)
+
+```
+
+<font size="3"> MSE of RandomForests </font>
+```{r}
+print(Mean_MSE_woods)
+```
+<font size="3">MSE of Linear Model</font>
+```{R}
+print(Mean_MSE_model)
+```
+<font size="3">MSE of rpart</font>
+```{R}
+print(Mean_MSE_cart)
+```
+random forest has the best performance as the MSE is the lowest for this model.
+
+
+
+
+
+
+
+
+comparing randomforest, cart and the logistic regression predicting the parent satisfaction of the program using Discussion and raisedhands.
+```{R}
+
+#rpart2 needs the parent satisfaction to be binary 1 or 0 not 'good' or 'bad
+rpart2log <- ProjectData %>%
+  mutate(Satisfaction = case_when(ParentschoolSatisfaction == 'Good' ~ 1,
+                                  ParentschoolSatisfaction == 'Bad' ~ 0))
+#head(rpart2log)
+#selecting the variables of interest
+rpart2log <- rpart2log %>% select(Satisfaction,Discussion,raisedhands)
+#head(rpart2log)
+
+
+set.seed(927384)
+#creating an empty matrix to store the MSE values in
+mean_squared_error <- matrix(NA, nrow = 20, ncol = 3)
+
+#seperating the data into 20 different folds
+my_folds <- caret::createFolds(rpart2log$Satisfaction, k = 20)
+afold <- rpart2log$Satisfaction[my_folds[[1]]]
+
+mylist_woods <- c()
+mylist_cart <- c()
+mylist_model <- c()
+x = 0
+
+while (x < 20) {
+  x = x + 1
+  testfold <- rpart2log[my_folds[[x]],]
+  trainfold <- rpart2log[-my_folds[[x]],]
+  
+  # fit the random forest for each iteration and calculate MSE
+  randomwoods  <- randomForest(Satisfaction ~ raisedhands + Discussion, data = trainfold)
+  rf_predictions  <- predict(randomwoods, testfold)
+  MSE = mean(abs(rf_predictions - testfold$Satisfaction)^2)
+  addon <- MSE
+  mylist_woods <- c(mylist_woods, addon)
+  
+  # fit the CART and calculate MSE for each iteration.
+  cart <- rpart(Satisfaction ~ raisedhands + Discussion, data = trainfold)
+  cart_predict <- predict(cart, testfold)
+  MSE_Cart = mean(abs(cart_predict - testfold$Satisfaction)^2)
+  addon2 <- MSE_Cart
+  mylist_cart <- c(mylist_cart, addon2)
+  
+  # fit the GLM Model and calculate MSE for each iteration.
+  my_glm2 <- glm(Satisfaction ~ raisedhands + Discussion, data = trainfold, family = binomial)
+  model_predict <- predict(my_glm2,testfold)
+  MSE_model = mean(abs(model_predict - testfold$Satisfaction)^2)
+  addon3 <- MSE_model
+  mylist_model <- c(mylist_model, addon3)}
+
+```
+
+
+```{R} 
+# Code for part b
+mean_squared_error <- matrix(NA, nrow = 20, ncol = 0)
+mean_squared_error <- cbind(mean_squared_error,mylist_model)
+mean_squared_error <- cbind(mean_squared_error,mylist_cart)
+mean_squared_error <- cbind(mean_squared_error,mylist_woods)
+
+Mean_MSE_model <- mean(mylist_model)
+Mean_MSE_cart <- mean(mylist_cart)
+Mean_MSE_woods <- mean(mylist_woods)
+
+# Your Code Here:
+print(mean_squared_error)
+```
+
+```{R}
+
+print(Mean_MSE_woods)
+print(Mean_MSE_model)
+print(Mean_MSE_cart)
+
+```
+
 
 ```{R, echo=F}
 ## DO NOT DELETE THIS BLOCK!
