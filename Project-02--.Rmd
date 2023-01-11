@@ -144,6 +144,10 @@ boxplot
 
 The data appears on the qq-plot (Plot_1) to pass the assumption of linearity however, upon further investigation in (Plot_2) when the residuals are plotted against the fitted values you can see that the data vaguely resembles a cone opening to the right. Ideally the data is randomly scattered around zero. This however is not the case. Taking a closer look in (Plot_3) of box plots across the categorical variables of 'class' we can see the distribution between 'ClassH','ClassM' and 'ClassL'. The variance of 'ClassL' differes greatly from the other two classes leading to a failure of the assumption of homoscedasticity. This is indicative of a limitation of the model as the model will struggle to provide precise predictions for the students with class performances of 'M' or 'H' as the residual values are much greater.
 
+
+
+#maybe
+
 ## Logistic Regression
 We are attempting to answer the second conceptual question with the logistic regression.
 Does greater student involvement predict parent satisfaction with the program. Parent satisfaction is a binary variable
@@ -572,10 +576,18 @@ Mean_MSE_woods <- mean(mylist_woods)
 print(mean_squared_error)
 ```
 
+<font size="3"> MSE of RandomForests </font>
 ```{R}
-
 print(Mean_MSE_woods)
+```
+
+<font size="3">MSE of Linear Model</font>
+```{R}
 print(Mean_MSE_model)
+```
+
+<font size="3">MSE of rpart</font>
+```{R}
 print(Mean_MSE_cart)
 
 ```
